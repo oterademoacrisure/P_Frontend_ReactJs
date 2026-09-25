@@ -1,0 +1,81 @@
++-----------------------------------------------------------------------------------+
+|                                 USER INTERFACE                                    |
+|                  React + Vite SPA (this repo, Payeriq-Frontend)                   |
+|     RequestForm.jsx (project name, prompt, files, output formats) -> App.jsx      |
+|              which owns the session and drives the request below                  |
++-----------------------------------------------------------------------------------+
+                                          |
+                    HTTP POST, multipart/form-data, NDJSON-streamed response
+                                          |
+              +-------------------------------------------------------+
+              |                                                       |
+   First submit for this project                        Every submit after that
+      (no session_id yet)                              (session_id already known)
+              |                                                       |
+              v                                                       v
+   POST /v2/generate                                      POST /v2/refine/{session_id}
+   { project_name, instructions,                          { instructions, output_format[],
+     output_format[], files[] }                             files[] }  (files optional --
+                                                              backend appends them to the
+                                                              session's existing files)
+              |                                                       |
+              +-------------------------------------------------------+
+                                          |
+                                          v
++-----------------------------------------------------------------------------------+
+|                     FASTAPI BACKEND (Azure Container Apps)                        |
+|          payeriq-api.wittyfield-97c21b82.eastus.azurecontainerapps.io             |
+|                                                                                   |
+|   Per requested output_format, a LangGraph run streams newline-delimited JSON     |
+|   as it advances through:                                                         |
+|                                                                                   |
+|     guardrail -> retrieval -> drafting -> groundedness check -> retry (<= 2x)      |
+|         -> finalize                                                              |
+|                                                                                   |
+|   Each stage emits {"type":"progress", format, node, message} so the UI can       |
+|   show live status instead of a bare spinner; the run ends with either            |
+|   {"type":"result", session_id, outputs: {sttm, frd, gherkin}} or                 |
+|   {"type":"error", message}.                                                      |
+|                                                                                   |
+|   NOTE: src/utils/api.js documents output_format as NOT needing to match what     |
+|   the session originally started with -- checking a new format on a refine call   |
+|   just starts that format's own thread rather than replaying the other formats'   |
+|   history into it. Only project_name is fixed once a session exists.              |
++-----------------------------------------------------------------------------------+
+              |                                          |
+   retrieval  |                                          | drafting / groundedness
+              v                                          v
++-------------------------------+          +--------------------------------------+
+|       AZURE AI SEARCH         |          |         AZURE OPENAI SERVICE          |
+|   RAG index over the          |          |    gpt-4.1-mini / gpt-4o deployment    |
+|   enterprise knowledge base    |          |  drafts + grounds each output format   |
+|   (instructions, data          |          |         under BA guardrails            |
+|    dictionaries, templates)    |          +--------------------------------------+
++-------------------------------+
+                                          |
+                                          v
++-----------------------------------------------------------------------------------+
+|          BACK IN THE BROWSER -- rendering & export (this repo, no server)         |
+|                                                                                   |
+|   textRenderers.js  splits the streamed result into one chunk per requested       |
+|                      format and renders each to on-screen HTML                    |
+|   excelExport.js     (xlsx-js-style) builds the multi-sheet .xlsx client-side     |
+|   wordExport.js      builds the .doc export client-side                          |
+|                                                                                   |
+|   The backend returns raw structured text only -- it does not generate the       |
+|   .xlsx/.doc files itself; all spreadsheet/document formatting happens here.      |
++-----------------------------------------------------------------------------------+
+
+Update history (most recent first)
+-----------------------------------
+- Live progress streaming: /v2/generate and /v2/refine/{session_id} now stream
+  NDJSON progress events instead of returning one JSON body, so the UI can show
+  "guardrail -> retrieval -> drafting -> ..." as it happens (src/utils/api.js,
+  App.jsx's onProgress/progressLog).
+- Session-based refine: introduced session_id + /v2/refine/{session_id} so a
+  second submit amends the same document instead of starting over. Formats are
+  NOT locked to the session's original selection -- checking a new format adds
+  it rather than being rejected.
+- Client-side export: Excel and Word files are built in the browser
+  (excelExport.js, wordExport.js) from the backend's plain text response; there
+  is no server-side "xlsx_builder.py" in this frontend's request path.

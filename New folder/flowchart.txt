@@ -1,0 +1,85 @@
++-----------------------------------+
+                  |  Start: .deploy.ps1 Execution     |
+                  +-----------------------------------+
+                                    |
+                                    v
+            +-----------------------------------------------+
+            | Disable Azure CLI SSL Certificate Verification |
+            +-----------------------------------------------+
+                                    |
+                                    v
+                      /---------------------------\
+                     /   Step 1: Check Azure       \
+                    <    Login Status (az account)  >
+                     \                             /
+                      \---------------------------/
+                                 /     \
+                       No       /       \  Yes
+                               v         v
+                     +------------+   +-------------------+
+                     |  az login  |   | Authenticated OK  |
+                     +------------+   +-------------------+
+                               \         /
+                                \       /
+                                 v     v
+            +-----------------------------------------------+
+            | Step 2: Ensure Resource Group & ACA Env Exist |
+            | - Resource Group: rg-foundry                  |
+            | - ACA Environment: rg-foundry-env             |
+            +-----------------------------------------------+
+                                    |
+                                    v
+                      /---------------------------\
+                     /   Check ACR Existence       \
+                    <   (az acr show)               >
+                     \                             /
+                      \---------------------------/
+                                 /     \
+                       No       /       \  Yes
+                               v         v
+           +-----------------------+   +-----------------------+
+           | Create ACR            |   | Enable Admin Access   |
+           | (payeriqregistry)     |   | on Existing ACR       |
+           +-----------------------+   +-----------------------+
+                               \         /
+                                \       /
+                                 v     v
+            +-----------------------------------------------+
+            | Step 3: Remote Docker Build in Azure Cloud    |
+            | - Build & push image to ACR via az acr build  |
+            | - Tag: payeriq-api:v1                         |
+            +-----------------------------------------------+
+                                    |
+                                    v
+                      /---------------------------\
+                     /   Did Docker Build Succeed? \
+                    <    ($LASTEXITCODE == 0)       >
+                     \                             /
+                      \---------------------------/
+                                 /     \
+                       No       /       \  Yes
+                               v         v
+                +---------------------+  +--------------------------------+
+                | Halt Pipeline       |  | Step 4: Fetch ACR Credentials  |
+                | Output Error Exit 1 |  | - Username & Password          |
+                +---------------------+  +--------------------------------+
+                                                         |
+                                                         v
+                                         +--------------------------------+
+                                         | Deploy Container App           |
+                                         | - Pull image from ACR          |
+                                         | - Set CPU (0.5) & Memory (1Gi) |
+                                         | - Set Min Replicas = 1         |
+                                         | - Inject Azure OpenAI Env Vars |
+                                         +--------------------------------+
+                                                         |
+                                                         v
+                                         +--------------------------------+
+                                         | Retrieve App FQDN & Print      |
+                                         | Live Endpoint & Swagger Docs   |
+                                         +--------------------------------+
+                                                         |
+                                                         v
+                                        +----------------------------------+
+                                        | End: Pipeline Execution Finished |
+                                        +----------------------------------+
