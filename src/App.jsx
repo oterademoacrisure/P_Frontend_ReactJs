@@ -1,11 +1,18 @@
-import { useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Header from './components/Header.jsx';
 import LoginPage from './components/LoginPage.jsx';
 import RequestForm from './components/RequestForm.jsx';
 import OutputPanel from './components/OutputPanel.jsx';
 import TemplatePage from './pages/TemplatePage.jsx';
-import { generateViaBackend, refineViaBackend, loginViaBackend } from './utils/api.js';
+import AdminRegisterPage from './pages/AdminRegisterPage.jsx';
+import {
+  generateViaBackend,
+  refineViaBackend,
+  loginViaBackend,
+  fetchMyProjects,
+  downloadFromBackend,
+} from './utils/api.js';
 import { renderMultiFormatOutputChunks, stampCurrentDate } from './utils/textRenderers.js';
 import { downloadExcel } from './utils/excelExport.js';
 import { downloadWord } from './utils/wordExport.js';
@@ -67,8 +74,53 @@ export default function App() {
   // but closing the tab does -- consistent with this app's existing
   // "no long-lived client state" approach to the generate/refine session.
   const [auth, setAuth] = useState(loadStoredAuth);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [projectName, setProjectName] = useState('');
+  // The client/project this user works on, assigned on the admin "Register
+  // user" page -- not chosen here. Sent with every /v2/generate call: it
+  // picks the project's own ontology and documents, and the backend rejects
+  // any project the user isn't assigned to.
+  const [clientId, setClientId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  // Display names for the ids above, e.g. "Excellus / Payment Integrity".
+  const [projectLabel, setProjectLabel] = useState('');
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsError, setProjectsError] = useState('');
+
+  useEffect(() => {
+    if (!auth?.token) return;
+    let cancelled = false;
+    setProjectsLoading(true);
+    setProjectsError('');
+    setClientId('');
+    setProjectId('');
+    setProjectLabel('');
+    fetchMyProjects(auth.token)
+      .then((data) => {
+        if (cancelled) return;
+        const assigned = data.projects[0];
+        if (assigned) {
+          setClientId(assigned.clientId);
+          setProjectId(assigned.projectId);
+          setProjectLabel(`${assigned.clientName} / ${assigned.projectName}`);
+        }
+        setProjectsLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err.status === 401) {
+          handleLogout();
+          return;
+        }
+        setProjectsError(err.message);
+        setProjectsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth?.token]);
   const [prompt, setPrompt] = useState('');
   const [formats, setFormats] = useState([]);
   const [files, setFiles] = useState([]);
@@ -144,9 +196,12 @@ export default function App() {
     // backend appends any new files to the session's existing ones -- so
     // re-attaching something is optional once a session is already active.
     const filesEmpty = !continuing && files.length === 0;
+    // A refine continues the session's own project, so it's only required
+    // to start one.
+    const projectEmpty = !continuing && !(clientId && projectId);
 
-    setErrors({ prompt: promptEmpty, format: formatEmpty, files: filesEmpty });
-    if (promptEmpty || formatEmpty || filesEmpty) return;
+    setErrors({ prompt: promptEmpty, format: formatEmpty, files: filesEmpty, project: projectEmpty });
+    if (promptEmpty || formatEmpty || filesEmpty || projectEmpty) return;
 
     const title = `${project} — ${formats.map((f) => formatLabels[f]).join(' + ')}`;
 
@@ -174,7 +229,7 @@ export default function App() {
     try {
       const { sessionId: newSessionId, text: rawText, statuses, messages } = continuing
         ? await refineViaBackend(sessionId, formats, prompt.trim(), files, onProgress, auth?.token)
-        : await generateViaBackend(project, formats, prompt.trim(), files, onProgress, auth?.token);
+        : await generateViaBackend(project, formats, prompt.trim(), files, onProgress, auth?.token, clientId, projectId);
       // The model has no real notion of "today" and otherwise copies a
       // static example date into the STTM Summary's "Version / Date" row --
       // stamp the real current date in once here, upstream of the on-screen
@@ -247,6 +302,21 @@ export default function App() {
 
   // Ends the current session so the next Submit starts a fresh /generate
   // call instead of continuing to refine this one.
+  // STTM downloads the backend's copy of STTM_Data_Ingestion_Template.xlsx
+  // filled with this session's mapping. If the server no longer has the file
+  // (restarted, or no session yet), build the workbook in the browser instead.
+  async function handleDownloadExcel() {
+    if (sessionId) {
+      try {
+        await downloadFromBackend(sessionId, 'STTM', auth?.token);
+        return;
+      } catch (err) {
+        console.warn('Template download unavailable, building the workbook locally:', err);
+      }
+    }
+    downloadExcel(lastGenerated);
+  }
+
   function handleStartNew() {
     setSessionId(null);
     setProjectName('');
@@ -269,6 +339,22 @@ export default function App() {
   // -- and therefore only reveals the rest of the app -- on success.
   async function handleLogin(username, password) {
     const result = await loginViaBackend(username, password);
+    storeAuth(result);
+  }
+
+  // Same backend login as handleLogin, but used by the /admin sign-in page:
+  // refuses (without storing anything) any account whose role isn't admin,
+  // then lands on the admin page instead of the generator.
+  async function handleAdminLogin(username, password) {
+    const result = await loginViaBackend(username, password);
+    if (!result.isAdmin) {
+      throw new Error('This account does not have admin access.');
+    }
+    storeAuth(result);
+    navigate('/admin/register', { replace: true });
+  }
+
+  function storeAuth(result) {
     setAuth(result);
     try {
       sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(result));
@@ -288,8 +374,16 @@ export default function App() {
   }
 
   if (!auth) {
-    return <LoginPage onLogin={handleLogin} />;
+    return location.pathname.startsWith('/admin') ? (
+      <LoginPage admin onLogin={handleAdminLogin} />
+    ) : (
+      <LoginPage onLogin={handleLogin} />
+    );
   }
+
+  // Set by the backend at login (see loginViaBackend). A login stored before
+  // this field existed has no isAdmin, so an admin just signs in again.
+  const isAdmin = !!auth.isAdmin;
 
   return (
     <Routes>
@@ -297,7 +391,7 @@ export default function App() {
         path="/"
         element={
           <div className="wrap">
-            <Header username={auth.username} onLogout={handleLogout} />
+            <Header username={auth.username} onLogout={handleLogout} isAdmin={isAdmin} />
 
             <div className="grid">
               <RequestForm
@@ -310,6 +404,10 @@ export default function App() {
                 onPromptChange={handlePromptChange}
                 projectName={projectName}
                 onProjectNameChange={setProjectName}
+                projectsLoading={projectsLoading}
+                projectsError={projectsError}
+                projectId={projectId}
+                projectLabel={projectLabel}
                 onSubmit={handleSubmit}
                 errors={errors}
                 generating={generating}
@@ -327,7 +425,7 @@ export default function App() {
                 slides={slides}
                 errorMessage={errorMessage}
                 canDownload={canDownload}
-                onDownloadExcel={() => downloadExcel(lastGenerated)}
+                onDownloadExcel={handleDownloadExcel}
                 onDownloadWord={() => downloadWord(lastGenerated)}
               />
             </div>
@@ -347,6 +445,17 @@ export default function App() {
       <Route
         path="/Agile_Artifact_Template"
         element={<TemplatePage templateKey="gherkin" username={auth.username} onLogout={handleLogout} />}
+      />
+      <Route path="/admin" element={<Navigate to={isAdmin ? '/admin/register' : '/'} replace />} />
+      <Route
+        path="/admin/register"
+        element={
+          isAdmin ? (
+            <AdminRegisterPage username={auth.username} token={auth.token} onLogout={handleLogout} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

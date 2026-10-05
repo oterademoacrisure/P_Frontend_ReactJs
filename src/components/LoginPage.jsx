@@ -1,7 +1,11 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import Header from './Header.jsx';
 
-export default function LoginPage({ onLogin }) {
+// `admin` switches the copy and the footer link between the regular sign-in
+// (at /) and the admin sign-in (at /admin) -- the form itself is identical;
+// App.jsx's onLogin handler is what rejects non-admin accounts on /admin.
+export default function LoginPage({ onLogin, admin = false }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,8 +34,12 @@ export default function LoginPage({ onLogin }) {
 
       <div className="login-shell">
         <form className="login-card" onSubmit={handleSubmit}>
-          <h2>Sign in</h2>
-          <p className="login-sub">Enter the credentials issued to you to access BA Assist.</p>
+          <h2>{admin ? 'Admin sign in' : 'Sign in'}</h2>
+          <p className="login-sub">
+            {admin
+              ? 'Sign in with an administrator account to manage users.'
+              : 'Enter the credentials issued to you to access BA Assist.'}
+          </p>
 
           <div className={`field${error ? ' invalid' : ''}`}>
             <label className="f-label" htmlFor="login-username">
@@ -72,6 +80,10 @@ export default function LoginPage({ onLogin }) {
             {submitting && <span className="spinner"></span>}
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
+
+          <div className="login-switch">
+            {admin ? <Link to="/">‹ Back to user sign in</Link> : <Link to="/admin">Admin sign in</Link>}
+          </div>
         </form>
       </div>
     </div>

@@ -1,4 +1,6 @@
-export default function Header({ username, onLogout }) {
+import { Link } from 'react-router-dom';
+
+export default function Header({ username, onLogout, isAdmin }) {
   return (
     <div className="titleblock">
       <div className="tb-top">
@@ -10,6 +12,11 @@ export default function Header({ username, onLogout }) {
             {onLogout && (
               <div className="tb-user">
                 {username && <span className="tb-username">{username}</span>}
+                {isAdmin && (
+                  <Link to="/admin/register" className="tb-admin">
+                    Admin
+                  </Link>
+                )}
                 <button type="button" className="tb-logout" onClick={onLogout}>
                   Sign out
                 </button>

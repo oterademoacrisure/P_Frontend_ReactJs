@@ -38,6 +38,10 @@ export default function RequestForm({
   onPromptChange,
   projectName,
   onProjectNameChange,
+  projectsLoading,
+  projectsError,
+  projectId,
+  projectLabel,
   onSubmit,
   errors,
   generating,
@@ -47,10 +51,21 @@ export default function RequestForm({
 }) {
   const fileInputRef = useRef(null);
 
+  // The project comes from the user's admin-assigned mapping (Register user
+  // page) -- shown here read-only, not chosen.
+  const noProject = !projectsLoading && !projectId;
+
   return (
     <div className="section section-request">
       <div className="section-head">
-        <h2>User: {username}</h2>
+        <h2>
+          User: {username}
+          {projectId && (
+            <span className="opt">
+              {' '}· {projectLabel}
+            </span>
+          )}
+        </h2>
       </div>
       <div className="section-body">
         {sessionActive && (
@@ -59,6 +74,15 @@ export default function RequestForm({
               Continuing the current session — new instructions refine the same document. Check another format
               anytime to add it to this session too.
             </span>
+          </div>
+        )}
+
+        {(noProject || projectsError || errors.project) && (
+          <div className="field invalid">
+            <div className="field-error">
+              <span aria-hidden="true">⚠</span>
+              <span>{projectsError || 'No project is assigned to you yet. Ask an admin to assign one.'}</span>
+            </div>
           </div>
         )}
 

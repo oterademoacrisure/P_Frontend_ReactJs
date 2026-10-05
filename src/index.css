@@ -851,6 +851,36 @@ table.otbl td:first-child{ font-weight:600; color:var(--blue-deep); }
 }
 .login-submit{ width:100%; margin-top:6px; }
 .login-submit .spinner{ border-color:rgba(255,255,255,0.4); border-top-color:#fff; }
+.login-switch{ margin-top:16px; text-align:center; font-size:12.5px; }
+.login-switch a{ color:var(--blue); font-weight:600; text-decoration:none; }
+.login-switch a:hover{ text-decoration:underline; }
+
+/* ===== Admin: register user ===== */
+.admin-card{ max-width:460px; }
+.admin-card select:disabled{ background:var(--blue-tint); color:var(--ink-soft); cursor:not-allowed; }
+.admin-btnrow{ justify-content:flex-end; margin-top:6px; }
+.admin-btnrow .btn{ min-width:96px; justify-content:center; }
+.admin-btnrow .spinner{ border-color:rgba(255,255,255,0.4); border-top-color:#fff; }
+.admin-success{
+  font-size:12.5px;
+  color:var(--success);
+  background:var(--blue-tint);
+  border:1px solid rgba(30,114,140,0.35);
+  border-radius:8px;
+  padding:9px 11px;
+  margin-bottom:16px;
+}
+.tb-admin{
+  font-size:12.5px;
+  font-weight:600;
+  color:#fff;
+  text-decoration:none;
+  background:rgba(255,255,255,0.12);
+  border:1px solid rgba(255,255,255,0.45);
+  border-radius:8px;
+  padding:6px 12px;
+}
+.tb-admin:hover{ background:rgba(255,255,255,0.22); border-color:#fff; }
 
 footer.hint{
   margin-top:34px;
