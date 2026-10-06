@@ -273,6 +273,28 @@ export async function fetchMyProjects(token) {
 // ===================================================================
 // ADMIN -- USER REGISTRATION
 // ===================================================================
+// Every User / Role / ClientID / ProjectID mapping, for the admin page's
+// user list. projectId (optional) keeps only projects whose id or name
+// contains it; the page loads everything once and filters as you type.
+export async function fetchUserMappings(token, projectId = '') {
+  const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+  const res = await fetch(`${BASE_URL}/admin/users${query}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (e) {
+    // Non-JSON body -- fall through to the generic message below.
+  }
+  if (!res.ok) {
+    const err = new Error((data && data.detail) || `Could not load users (HTTP ${res.status}).`);
+    err.status = res.status;
+    throw err;
+  }
+  return data.users;
+}
+
 // Like /auth/login, this endpoint must be implemented on the backend: it
 // should verify the bearer token belongs to an admin, then save the record
 // { UserName, Role, ClientID, ProjectID } to the database. The admin check in

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import { ROLES } from '../data/clients.js';
-import { fetchProjectRegistry, registerUserViaBackend } from '../utils/api.js';
+import { fetchProjectRegistry, fetchUserMappings, registerUserViaBackend } from '../utils/api.js';
 
 // Keys match the database record's field names -- this object is exactly
 // what registerUserViaBackend() sends on OK.
@@ -15,6 +15,8 @@ const EMPTY_FORM = {
   ClientID: '',
   ProjectID: '',
 };
+
+const REDIRECT_DELAY_MS = 2500;
 
 const ERROR_TEXT = {
   UserName: 'Enter a user name.',
@@ -33,6 +35,11 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
+  // After a successful save the page shows the message briefly, then signs
+  // the admin out to the login page so the new user can sign in.
+  const [redirecting, setRedirecting] = useState(false);
+  const redirectTimer = useRef(null);
+  useEffect(() => () => clearTimeout(redirectTimer.current), []);
 
   // Clients and projects come from the backend's project registry, so this
   // page can only offer projects the backend will accept.
@@ -46,6 +53,31 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
         else setClientsError(err.message);
       });
   }, [token]);
+
+  // Registered users, listed under the form; reloaded after each save.
+  const [users, setUsers] = useState([]);
+  const [usersError, setUsersError] = useState('');
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [projectSearch, setProjectSearch] = useState('');
+  function loadUsers() {
+    setUsersLoading(true);
+    fetchUserMappings(token)
+      .then((list) => {
+        setUsers(list);
+        setUsersError('');
+      })
+      .catch((err) => {
+        if (err.status === 401) onLogout();
+        else setUsersError(err.message);
+      })
+      .finally(() => setUsersLoading(false));
+  }
+  useEffect(loadUsers, [token]);
+
+  const needle = projectSearch.trim().toLowerCase();
+  const shownUsers = needle
+    ? users.filter((u) => u.ProjectID.toLowerCase().includes(needle) || u.projectName.toLowerCase().includes(needle))
+    : users;
 
   const client = clients.find((c) => c.clientId === form.ClientID);
 
@@ -83,9 +115,14 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
     try {
       const saved = await registerUserViaBackend(record, token);
       const loginNote = saved?.login === 'created' ? ' Login created — give them this username and password.' : '';
-      setSavedMessage(`User "${record.UserName}" saved.${loginNote}`);
+      setSavedMessage(`Record has been added successfully.${loginNote} Redirecting to the login page…`);
       setForm(EMPTY_FORM);
       setErrors({});
+      setRedirecting(true);
+      redirectTimer.current = setTimeout(() => {
+        navigate('/', { replace: true });
+        onLogout();
+      }, REDIRECT_DELAY_MS);
     } catch (err) {
       // The stored login token has expired or is no longer valid -- send the
       // admin back to the login screen rather than failing every save.
@@ -113,7 +150,7 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
     <div className="wrap">
       <Header username={username} onLogout={onLogout} />
 
-      <div className="login-shell">
+      <div className="login-shell admin-shell">
         <form className="login-card admin-card" onSubmit={handleOk} noValidate>
           <h2>Register user</h2>
           <p className="login-sub">Assign a user to a client and project. Admins only.</p>
@@ -128,7 +165,7 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
               autoComplete="off"
               value={form.UserName}
               onChange={(e) => setField('UserName', e.target.value)}
-              disabled={saving}
+              disabled={saving || redirecting}
             />
             <div className="field-error">{ERROR_TEXT.UserName}</div>
           </div>
@@ -143,7 +180,7 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
               autoComplete="new-password"
               value={form.Password}
               onChange={(e) => setField('Password', e.target.value)}
-              disabled={saving}
+              disabled={saving || redirecting}
             />
             <div className="field-hint">
               New user: enter a password (at least 8 characters) to create their login. Existing user: leave blank.
@@ -154,7 +191,7 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
             <label className="f-label" htmlFor="reg-role">
               Role <span className="req">*</span>
             </label>
-            <select id="reg-role" value={form.Role} onChange={(e) => setField('Role', e.target.value)} disabled={saving}>
+            <select id="reg-role" value={form.Role} onChange={(e) => setField('Role', e.target.value)} disabled={saving || redirecting}>
               {ROLES.map((r) => (
                 <option key={r} value={r}>
                   {r}
@@ -172,7 +209,7 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
               id="reg-client"
               value={form.ClientID}
               onChange={(e) => setField('ClientID', e.target.value)}
-              disabled={saving}
+              disabled={saving || redirecting}
             >
               <option value="">{clients.length ? 'Select a client' : 'Loading…'}</option>
               {clients.map((c) => (
@@ -193,7 +230,7 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
               id="reg-project"
               value={form.ProjectID}
               onChange={(e) => setField('ProjectID', e.target.value)}
-              disabled={saving || !client}
+              disabled={saving || redirecting || !client}
             >
               <option value="">{client ? 'Select a project' : 'Select a client first'}</option>
               {client?.projects.map((p) => (
@@ -214,15 +251,80 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
           {savedMessage && <div className="admin-success">{savedMessage}</div>}
 
           <div className="btnrow admin-btnrow">
-            <button type="button" className="btn ghost" onClick={handleCancel} disabled={saving}>
+            <button type="button" className="btn ghost" onClick={handleCancel} disabled={saving || redirecting}>
               Cancel
             </button>
-            <button type="submit" className="btn submit" disabled={saving}>
+            <button type="submit" className="btn submit" disabled={saving || redirecting}>
               {saving && <span className="spinner"></span>}
               {saving ? 'Saving…' : 'OK'}
             </button>
           </div>
         </form>
+
+        <section className="login-card admin-list-card">
+          <div className="admin-list-head">
+            <h2>Registered users</h2>
+            <input
+              type="search"
+              className="admin-search"
+              placeholder="Search by ProjectID"
+              aria-label="Search by ProjectID"
+              value={projectSearch}
+              onChange={(e) => setProjectSearch(e.target.value)}
+            />
+          </div>
+          <p className="login-sub">
+            {usersLoading
+              ? 'Loading…'
+              : `${shownUsers.length} of ${users.length} mapping${users.length === 1 ? '' : 's'}`}
+          </p>
+
+          {usersError && (
+            <div className="login-error">
+              <span aria-hidden="true">⚠</span>
+              <span>{usersError}</span>
+            </div>
+          )}
+
+          {!usersLoading && !usersError && (
+            <div className="otbl-wrap">
+              <table className="otbl">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>ClientID</th>
+                    <th>ProjectID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownUsers.map((u) => (
+                    <tr key={`${u.UserName}|${u.ClientID}|${u.ProjectID}`}>
+                      <td>{u.UserName}</td>
+                      <td>{u.Role}</td>
+                      <td>{u.ClientID}</td>
+                      <td>
+                        {u.ProjectID}
+                        {!u.registered && (
+                          <span className="admin-flag" title="This project is no longer registered; reassign the user.">
+                            not registered
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {shownUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="admin-empty">
+                        {users.length ? 'No users for that ProjectID.' : 'No users registered yet.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
