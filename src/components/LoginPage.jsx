@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Header from './Header.jsx';
 
-// `admin` switches the copy and the footer link between the regular sign-in
-// (at /) and the admin sign-in (at /admin) -- the form itself is identical;
-// App.jsx's onLogin handler is what rejects non-admin accounts on /admin.
+// `admin` switches the copy between the regular sign-in (at /) and the admin
+// sign-in (at /admin) -- the form itself is identical; App.jsx's onLogin
+// handler is what rejects non-admin accounts on /admin. The regular page has
+// no link to /admin; administrators reach it by URL.
 export default function LoginPage({ onLogin, admin = false }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +35,6 @@ export default function LoginPage({ onLogin, admin = false }) {
 
       <div className="login-shell">
         <form className="login-card" onSubmit={handleSubmit}>
-          <h2>{admin ? 'Admin sign in' : 'Sign in'}</h2>
           <p className="login-sub">
             {admin
               ? 'Sign in with an administrator account to manage users.'
@@ -81,9 +81,11 @@ export default function LoginPage({ onLogin, admin = false }) {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
 
-          <div className="login-switch">
-            {admin ? <Link to="/">‹ Back to user sign in</Link> : <Link to="/admin">Admin sign in</Link>}
-          </div>
+          {admin && (
+            <div className="login-switch">
+              <Link to="/">‹ Back to user sign in</Link>
+            </div>
+          )}
         </form>
       </div>
     </div>
