@@ -6,7 +6,8 @@ import { MULTI_FORMAT_DIVIDER } from './textRenderers.js';
 // ===================================================================
 // Active Azure Container Apps Backend API Endpoint
 //const BASE_URL = 'https://payeriq-api.wittyfield-97c21b82.eastus.azurecontainerapps.io/v2';
-const BASE_URL = 'http://localhost:8000/v2';
+//const BASE_URL = 'http://localhost:8000/v2';
+const BASE_URL = 'https://payeriq-api-production.wittyfield-97c21b82.eastus.azurecontainerapps.io/';
 
 // /v2/generate and /v2/refine stream newline-delimited JSON instead of one
 // JSON body -- a full run (guardrail -> retrieval -> drafting -> groundedness
