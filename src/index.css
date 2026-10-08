@@ -896,6 +896,9 @@ table.otbl td:first-child{ font-weight:600; color:var(--blue-deep); }
   padding:1px 6px;
   white-space:nowrap;
 }
+table.otbl td.admin-actions{ text-align:right; white-space:nowrap; }
+.btn.admin-delete{ font-size:12px; padding:4px 10px; color:var(--danger); border-color:rgba(192,57,43,0.45); }
+.btn.admin-delete:hover:not(:disabled){ background:#FDECEA; }
 table.otbl td.admin-empty{ font-weight:400; color:var(--ink-soft); text-align:center; }
 .tb-admin{
   font-size:12.5px;

@@ -299,6 +299,28 @@ export async function fetchUserMappings(token, projectId = '') {
 // should verify the bearer token belongs to an admin, then save the record
 // { UserName, Role, ClientID, ProjectID } to the database. The admin check in
 // the frontend only hides the page -- the backend must enforce it.
+// Deletes one row of the admin user list (a User -> client/project mapping).
+// The backend also deletes the user's login when it was their last mapping;
+// the result's `deleted` is "mapping" or "user".
+export async function deleteUserMapping(mappingId, token) {
+  const res = await fetch(`${BASE_URL}/admin/users/${encodeURIComponent(mappingId)}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (e) {
+    // Non-JSON body -- fall through to the generic message below.
+  }
+  if (!res.ok) {
+    const err = new Error((data && data.detail) || `Could not delete user (HTTP ${res.status}).`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
 export async function registerUserViaBackend(user, token) {
   const res = await fetch(`${BASE_URL}/admin/users`, {
     method: 'POST',

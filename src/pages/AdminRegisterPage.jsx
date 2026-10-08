@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import { ROLES } from '../data/clients.js';
-import { fetchProjectRegistry, fetchUserMappings, registerUserViaBackend } from '../utils/api.js';
+import { deleteUserMapping, fetchProjectRegistry, fetchUserMappings, registerUserViaBackend } from '../utils/api.js';
 
 // Keys match the database record's field names -- this object is exactly
 // what registerUserViaBackend() sends on OK.
@@ -59,6 +59,35 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
   const [usersError, setUsersError] = useState('');
   const [usersLoading, setUsersLoading] = useState(true);
   const [projectSearch, setProjectSearch] = useState('');
+  const [deletingId, setDeletingId] = useState('');
+  const [listMessage, setListMessage] = useState('');
+
+  async function handleDelete(u) {
+    const others = users.filter((x) => x.UserName.toLowerCase() === u.UserName.toLowerCase()).length - 1;
+    const what = others
+      ? `Remove "${u.UserName}" from ${u.ClientID} / ${u.ProjectID}? They keep their other ${others} project${others === 1 ? '' : 's'}.`
+      : `Delete user "${u.UserName}"? This is their only project, so their login is deleted too and they can no longer sign in.`;
+    if (!window.confirm(what)) return;
+    setDeletingId(u.id);
+    setListMessage('');
+    try {
+      const result = await deleteUserMapping(u.id, token);
+      setListMessage(
+        result.deleted === 'user'
+          ? `User "${u.UserName}" deleted.`
+          : `"${u.UserName}" removed from ${u.ClientID} / ${u.ProjectID}.`
+      );
+      loadUsers();
+    } catch (err) {
+      if (err.status === 401) {
+        onLogout();
+        return;
+      }
+      setUsersError(err.message || 'Could not delete user.');
+    } finally {
+      setDeletingId('');
+    }
+  }
   function loadUsers() {
     setUsersLoading(true);
     fetchUserMappings(token)
@@ -279,6 +308,7 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
               : `${shownUsers.length} of ${users.length} mapping${users.length === 1 ? '' : 's'}`}
           </p>
 
+          {listMessage && <div className="admin-success">{listMessage}</div>}
           {usersError && (
             <div className="login-error">
               <span aria-hidden="true">⚠</span>
@@ -295,6 +325,7 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
                     <th>Role</th>
                     <th>ClientID</th>
                     <th>ProjectID</th>
+                    <th aria-label="Actions"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -311,11 +342,21 @@ export default function AdminRegisterPage({ username, token, onLogout }) {
                           </span>
                         )}
                       </td>
+                      <td className="admin-actions">
+                        <button
+                          type="button"
+                          className="btn ghost admin-delete"
+                          onClick={() => handleDelete(u)}
+                          disabled={Boolean(deletingId) || redirecting}
+                        >
+                          {deletingId === u.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {shownUsers.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="admin-empty">
+                      <td colSpan={5} className="admin-empty">
                         {users.length ? 'No users for that ProjectID.' : 'No users registered yet.'}
                       </td>
                     </tr>
